@@ -46,6 +46,7 @@ class AddToCartGraphQl implements ArgumentInterface
               {
                 quantity: %qty
                 sku: "%sku"
+                entered_options: [%enteredOptions]
               }
             ]
         ) {
@@ -72,6 +73,7 @@ class AddToCartGraphQl implements ArgumentInterface
                     quantity: %qty
                     sku: "%sku"
                     selected_options: [%selectedOptions]
+                    entered_options: [%enteredOptions]
                   }
                 ]
             ) {
