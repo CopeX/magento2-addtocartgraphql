@@ -34,6 +34,9 @@ $addToCartQuery = $viewModelAddToCart->getAddToCartQuery();
             sku: '<?= $escaper->escapeJs($product->getSku()) ?>',
             currentSelection: null,
             selectedOptions: null,
+            customOptions: {},
+            enteredOptions: {},
+            onComplete: null,
             setCartIdByCustomerData(customerData) {
                 if (customerData && customerData.cart && customerData.cart.cartId) {
                     this.cartId = customerData.cart.cartId
@@ -55,11 +58,28 @@ $addToCartQuery = $viewModelAddToCart->getAddToCartQuery();
                     }
                 }
                 <?php endif; ?>
-
+                for (const attributeId in this.customOptions) {
+                    if (this.customOptions.hasOwnProperty(attributeId)) {
+                        let optionValues = attributeId.split("_");
+                        selectedOptions.push('"' + btoa('custom-option/' + optionValues[0] + '/' + optionValues[1]) + '"')
+                    }
+                }
                 return selectedOptions.join(',')
             },
+            getEnteredOptions(){
+                let returnVals = [];
+                if (this.enteredOptions) {
+                    for(let key in this.enteredOptions){
+                        let parts = key.split("_");
+                        let value = this.enteredOptions[key];
+                        returnVals.push({uid: btoa('custom-option/'+parts[0]+'/'+parts[1]),value: value});
+                    }
+                }
+                let options = JSON.stringify(returnVals);
+                return options.slice(1,-1);
+            },
             addToCart() {
-                if (!this.isLoading) {
+                if (!this.isLoading && document.getElementById('product_addtocart_form').checkValidity()) {
                     if (!this.selectedOptions || !this.qty) {
                         typeof window.dispatchMessages !== "undefined" && window.dispatchMessages(
                             [{
@@ -79,14 +99,20 @@ $addToCartQuery = $viewModelAddToCart->getAddToCartQuery();
                                 'Store': '<?= /* @noEscape */ $viewModelStore->getStoreCode() ?>',
                                 credentials: 'include'
                             },
-                            body: JSON.stringify({query: (this.getAddToCartQuery(this.cartId, this.qty, this.sku, this.getSelectedValuesAsBase64()))})
+                        body: JSON.stringify({query: (this.getAddToCartQuery(this.cartId, this.qty, this.sku, this.getEnteredOptions(), this.getSelectedValuesAsBase64()))})
                         }
                     ).then((response) => {
                             return response.json()
                         }
                     ).then((data) => {
-                        if (data && data.errors) {
-                            this.initErrorMessages(data.errors)
+                        if (data){
+                            if(data.errors) {
+                                this.initErrorMessages(data.errors)
+                            }else{
+                                if (typeof this.onComplete === "function") {
+                                    this.onComplete(data);
+                                }
+                            }
                         }
                         this.isLoading = false
                     }).catch(error => {
@@ -119,6 +145,27 @@ $addToCartQuery = $viewModelAddToCart->getAddToCartQuery();
             eventListeners: {
                 ['@update-currentSelection-<?= $escaper->escapeJs((int)$product->getId()) ?>.window'](event) {
                     this.selectedOptions = event.detail
+                },
+                ['@update-custom-option-active.window'](event) {
+                    let target = document.getElementById('options_' + event.detail.customOptionId);
+                    if (target && target.hasAttribute("type")) {
+                        if(target.type === "input" || target.type === "textarea"){
+                            if(event.detail.active){
+                                this.enteredOptions[event.detail.customOptionId] = target.value;
+                            }
+                            else {
+                                delete this.enteredOptions[event.detail.customOptionId];
+                            }
+                        }
+                        else {
+                            if(event.detail.active){
+                                this.customOptions[event.detail.customOptionId] = target.value;
+                            }
+                            else {
+                                delete this.customOptions[event.detail.customOptionId];
+                            }
+                        }
+                    }
                 },
                 ['@update-qty-<?= (int)$product->getId() ?>.window'](event) {
                     this.qty = event.detail
