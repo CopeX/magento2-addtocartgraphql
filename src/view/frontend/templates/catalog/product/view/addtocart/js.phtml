@@ -78,55 +78,63 @@ $addToCartQuery = $viewModelAddToCart->getAddToCartQuery();
                 let options = JSON.stringify(returnVals);
                 return options.slice(1,-1);
             },
-            addToCart() {
+addToCart() {
                 if (!this.isLoading && document.getElementById('product_addtocart_form').checkValidity()) {
-                    if (!this.selectedOptions || !this.qty) {
+                    if ( (this.hasOptions && !this.selectedOptions) || !this.qty) {
                         typeof window.dispatchMessages !== "undefined" && window.dispatchMessages(
                             [{
                                 type: "error",
                                 text: "<?= $escaper->escapeJs(__("Please select all required options.")) ?>"
                             }], 10000
                         )
+                        return false;
                     }
 
-                    this.isLoading = true
-
-                    fetch('<?= $escaper->escapeUrl($block->getBaseUrl()) ?>graphql', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'Store': '<?= /* @noEscape */ $viewModelStore->getStoreCode() ?>',
-                                credentials: 'include'
-                            },
-                        body: JSON.stringify({query: (this.getAddToCartQuery(this.cartId, this.qty, this.sku, this.getEnteredOptions(), this.getSelectedValuesAsBase64()))})
-                        }
-                    ).then((response) => {
-                            return response.json()
-                        }
-                    ).then((data) => {
-                        if (data){
-                            if(data.errors) {
-                                this.initErrorMessages(data.errors)
-                            }else{
-                                if (typeof this.onComplete === "function") {
-                                    this.onComplete(data);
-                                }
-                            }
-                        }
-                        this.isLoading = false
-                    }).catch(error => {
-                        console.error(error)
-                        typeof window.dispatchMessages !== "undefined" && window.dispatchMessages(
-                            [{
-                                type: "error",
-                                text: "<?= $escaper->escapeJs(__("Something went wrong. Please try again.")) ?>"
-                            }], 10000
-                        )
-                    }).finally(() => {
-                        this.reloadCustomerData()
-                    })
+                    this.isLoading = true;
+                    this.addToCartRetry(this.qty, this.sku, this.getEnteredOptions(), this.getSelectedValuesAsBase64(),3);
                 }
+            },
+            addToCartRetry(qty,sku,options,values, retries = 1){
+                fetch('<?= $escaper->escapeUrl($block->getBaseUrl()) ?>graphql',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Store': '<?= /* @noEscape */ $viewModelStore->getStoreCode() ?>',
+                            credentials: 'include'
+                        },
+                        body: JSON.stringify({query: (this.getAddToCartQuery(this.cartId, qty, sku, options, values))})
+                    }
+                ).then((response) => {
+                        return response.json()
+                    }
+                ).then((data) => {
+                    if (data){
+                        if(data.errors) {
+                            if(retries > 0){
+                                this.reloadCustomerData();
+                                (async () => { await new Promise(r => setTimeout( () => {this.addToCartRetry( qty, sku, options, values, retries -1)}, 500))})();
+                            }
+                            else { this.initErrorMessages(data.errors); }
+                        }else{
+                            if (typeof this.onComplete === "function") {
+                                this.onComplete(data);
+                            }
+                            this.tries = 0;
+                            this.reloadCustomerData()
+                        }
+                    }
+                    this.isLoading = false;
+                }).catch(error => {
+                    console.error(error)
+                    typeof window.dispatchMessages !== "undefined" && window.dispatchMessages(
+                        [{
+                            type: "error",
+                            text: "<?= $escaper->escapeJs(__("Something went wrong. Please try again.")) ?>"
+                        }], 10000
+                    )
+                })
             },
             clearErrorMessages() {
                 window.dispatchEvent(new CustomEvent('clear-messages'))
